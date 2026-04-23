@@ -1,0 +1,35 @@
+name: Docker ARM64
+
+on:
+  workflow_dispatch:
+
+env:
+  ALIYUN_REGISTRY: ${{ secrets.ALIYUN_REGISTRY }}
+  ALIYUN_NAME_SPACE: ${{ secrets.ALIYUN_NAME_SPACE }}
+  ALIYUN_REGISTRY_USER: ${{ secrets.ALIYUN_REGISTRY_USER }}
+  ALIYUN_REGISTRY_PASSWORD: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login Aliyun
+        run: |
+          docker login -u $ALIYUN_REGISTRY_USER -p $ALIYUN_REGISTRY_PASSWORD $ALIYUN_REGISTRY
+
+      - name: Pull ARM64 and Push
+        run: |
+          while read line; do
+            docker pull --platform linux/arm64 $line
+
+            image_name_tag=$(basename $line)
+
+            new_image=$ALIYUN_REGISTRY/$ALIYUN_NAME_SPACE/arm64/$image_name_tag
+
+            docker tag $line $new_image
+            docker push $new_image
+
+          done < arm64-images.txt
