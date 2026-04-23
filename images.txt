@@ -2,3 +2,4 @@ alpine
 registry:2.8.2
 registry:3
 ghcr.io/imzyb/misub:latest
+ghcr.io/berriai/litellm:main-latest
