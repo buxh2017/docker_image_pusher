@@ -1,57 +1,50 @@
-name: Sync Docker Images (Multi-Arch)
+name: Sync Docker Images (Selective Arch)
 
 on:
   workflow_dispatch:
-  schedule:
-    # 每天 UTC 02:30（北京时间 10:30）
-    - cron: "30 2 * * *"
-  push:
-    branches:
-      - main
-    paths:
-      - images.txt
-      - .github/workflows/docker-sync.yml
-
-concurrency:
-  group: docker-image-sync
-  cancel-in-progress: false
+    inputs:
+      arch:
+        description: "Select architecture to sync"
+        required: true
+        type: choice
+        options:
+          - arm64
+          - amd64
 
 env:
   ALIYUN_REGISTRY: "${{ secrets.ALIYUN_REGISTRY }}"
-  ALIYUN_NAMESPACE: "${{ secrets.ALIYUN_NAME_SPACE }}"
+  NAMESPACE_AMD64: "${{ secrets.NAMESPACE_AMD64 }}"
+  NAMESPACE_ARM64: "${{ secrets.NAMESPACE_ARM64 }}"
   ALIYUN_USERNAME: "${{ secrets.ALIYUN_REGISTRY_USER }}"
   ALIYUN_PASSWORD: "${{ secrets.ALIYUN_REGISTRY_PASSWORD }}"
 
 jobs:
   sync:
-    name: Sync Images To Aliyun
     runs-on: ubuntu-latest
-    timeout-minutes: 90
 
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login Aliyun Registry
+      - name: Login Aliyun
         run: |
-          # echo "$ALIYUN_PASSWORD" | docker login \
-          #   --username "$ALIYUN_USERNAME" \
-          #   --password-stdin \
-          #   "$ALIYUN_REGISTRY"
           docker login -u $ALIYUN_USERNAME -p $ALIYUN_PASSWORD $ALIYUN_REGISTRY
 
-      - name: Validate images.txt
+      - name: Select image list
+        id: list
         run: |
-          test -f images.txt || (echo "images.txt not found" && exit 1)
-          grep -v '^[[:space:]]*$' images.txt | grep -v '^#' > /tmp/images.txt
-          cat /tmp/images.txt
+          if [ "${{ github.event.inputs.arch }}" = "arm64" ]; then
+            echo "FILE=arm64-images.txt" >> $GITHUB_OUTPUT
+            ALIYUN_NAMESPACE=$NAMESPACE_ARM64
+          else
+            echo "FILE=amd64-images.txt" >> $GITHUB_OUTPUT
+            ALIYUN_NAMESPACE=$NAMESPACE_AMD64
+          fi
 
-      - name: Sync Multi-Arch Images
+      - name: Sync Images
         run: |
-          set -e
+          FILE=${{ steps.list.outputs.FILE }}
+
+          echo "Using file: $FILE"
 
           while read -r IMAGE; do
             [ -z "$IMAGE" ] && continue
@@ -59,32 +52,14 @@ jobs:
             IMAGE_NAME_TAG="${IMAGE##*/}"
             TARGET_IMAGE="$ALIYUN_REGISTRY/$ALIYUN_NAMESPACE/$IMAGE_NAME_TAG"
 
-            echo "======================================="
-            echo "SOURCE : $IMAGE"
-            echo "TARGET : $TARGET_IMAGE"
-            echo "======================================="
+            echo "Syncing $IMAGE -> $TARGET_IMAGE"
 
-            docker buildx imagetools create \
-              --tag "$TARGET_IMAGE" \
-              "$IMAGE"
+            docker pull --platform linux/${{ github.event.inputs.arch }} $IMAGE
 
-            echo "DONE: $TARGET_IMAGE"
-            echo
+            docker tag $IMAGE $TARGET_IMAGE
+            docker push $TARGET_IMAGE
 
-          done < /tmp/images.txt
-
-      - name: Verify Result
-        run: |
-          while read -r IMAGE; do
-            [ -z "$IMAGE" ] && continue
-
-            IMAGE_NAME_TAG="${IMAGE##*/}"
-            TARGET_IMAGE="$ALIYUN_REGISTRY/$ALIYUN_NAMESPACE/$IMAGE_NAME_TAG"
-
-            echo "Inspect => $TARGET_IMAGE"
-            docker buildx imagetools inspect "$TARGET_IMAGE" || true
-            echo
-          done < /tmp/images.txt
+          done < $FILE
 
       - name: Job Finished
         run: echo "All images synced successfully."
