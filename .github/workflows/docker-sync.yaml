@@ -34,32 +34,43 @@ jobs:
         run: |
           if [ "${{ github.event.inputs.arch }}" = "arm64" ]; then
             echo "FILE=arm64-images.txt" >> $GITHUB_OUTPUT
-            ALIYUN_NAMESPACE=$NAMESPACE_ARM64
+            echo "ALIYUN_NAMESPACE=$NAMESPACE_ARM64" >> $GITHUB_ENV
           else
             echo "FILE=amd64-images.txt" >> $GITHUB_OUTPUT
-            ALIYUN_NAMESPACE=$NAMESPACE_AMD64
+            echo "ALIYUN_NAMESPACE=${{ secrets.NAMESPACE_AMD64 }}" >> $GITHUB_ENV
           fi
 
       - name: Sync Images
         run: |
           FILE=${{ steps.list.outputs.FILE }}
+          # 检查文件是否存在，防止路径错误
+          if [ ! -f "$FILE" ]; then
+            echo "Error: $FILE not found!"
+            exit 1
+          fi
 
           echo "Using file: $FILE"
+          echo "Target Namespace: $ALIYUN_NAMESPACE"
 
-          while read -r IMAGE; do
-            [ -z "$IMAGE" ] && continue
+          # 使用 -n 判定文件是否为空，循环逻辑增强稳定性
+          while IFS= read -r IMAGE || [ -n "$IMAGE" ]; do
+            # 过滤空行和注释
+            [[ -z "$IMAGE" || "$IMAGE" =~ ^# ]] && continue
+            
+            # 去除可能存在的 Windows 换行符 \r
+            IMAGE=$(echo $IMAGE | tr -d '\r')
 
             IMAGE_NAME_TAG="${IMAGE##*/}"
             TARGET_IMAGE="$ALIYUN_REGISTRY/$ALIYUN_NAMESPACE/$IMAGE_NAME_TAG"
 
+            echo "-----------------------------------"
             echo "Syncing $IMAGE -> $TARGET_IMAGE"
 
-            docker pull --platform linux/${{ github.event.inputs.arch }} $IMAGE
+            docker pull --platform linux/${{ github.event.inputs.arch }} "$IMAGE"
+            docker tag "$IMAGE" "$TARGET_IMAGE"
+            docker push "$TARGET_IMAGE"
 
-            docker tag $IMAGE $TARGET_IMAGE
-            docker push $TARGET_IMAGE
-
-          done < $FILE
+          done < "$FILE"
 
       - name: Job Finished
         run: echo "All images synced successfully."
