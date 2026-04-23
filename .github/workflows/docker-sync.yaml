@@ -17,10 +17,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  ALIYUN_REGISTRY: ${{ secrets.ALIYUN_REGISTRY }}
-  ALIYUN_NAMESPACE: ${{ secrets.ALIYUN_NAMESPACE }}
-  ALIYUN_USERNAME: ${{ secrets.ALIYUN_USERNAME }}
-  ALIYUN_PASSWORD: ${{ secrets.ALIYUN_PASSWORD }}
+  ALIYUN_REGISTRY: "${{ secrets.ALIYUN_REGISTRY }}"
+  ALIYUN_NAMESPACE: "${{ secrets.ALIYUN_NAME_SPACE }}"
+  ALIYUN_USERNAME: "${{ secrets.ALIYUN_REGISTRY_USER }}"
+  ALIYUN_PASSWORD: "${{ secrets.ALIYUN_REGISTRY_PASSWORD }}"
 
 jobs:
   sync:
@@ -41,7 +41,7 @@ jobs:
           #   --username "$ALIYUN_USERNAME" \
           #   --password-stdin \
           #   "$ALIYUN_REGISTRY"
-          docker login -u $ALIYUN_REGISTRY_USER -p $ALIYUN_REGISTRY_PASSWORD $ALIYUN_REGISTRY
+          docker login -u $ALIYUN_USERNAME -p $ALIYUN_PASSWORD $ALIYUN_REGISTRY
 
       - name: Validate images.txt
         run: |
