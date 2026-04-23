@@ -37,10 +37,11 @@ jobs:
 
       - name: Login Aliyun Registry
         run: |
-          echo "$ALIYUN_PASSWORD" | docker login \
-            --username "$ALIYUN_USERNAME" \
-            --password-stdin \
-            "$ALIYUN_REGISTRY"
+          # echo "$ALIYUN_PASSWORD" | docker login \
+          #   --username "$ALIYUN_USERNAME" \
+          #   --password-stdin \
+          #   "$ALIYUN_REGISTRY"
+          docker login -u $ALIYUN_REGISTRY_USER -p $ALIYUN_REGISTRY_PASSWORD $ALIYUN_REGISTRY
 
       - name: Validate images.txt
         run: |
