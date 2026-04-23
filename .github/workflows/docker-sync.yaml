@@ -1,0 +1,89 @@
+name: Sync Docker Images (Multi-Arch)
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 每天 UTC 02:30（北京时间 10:30）
+    - cron: "30 2 * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - images.txt
+      - .github/workflows/docker-sync.yml
+
+concurrency:
+  group: docker-image-sync
+  cancel-in-progress: false
+
+env:
+  ALIYUN_REGISTRY: ${{ secrets.ALIYUN_REGISTRY }}
+  ALIYUN_NAMESPACE: ${{ secrets.ALIYUN_NAMESPACE }}
+  ALIYUN_USERNAME: ${{ secrets.ALIYUN_USERNAME }}
+  ALIYUN_PASSWORD: ${{ secrets.ALIYUN_PASSWORD }}
+
+jobs:
+  sync:
+    name: Sync Images To Aliyun
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login Aliyun Registry
+        run: |
+          echo "$ALIYUN_PASSWORD" | docker login \
+            --username "$ALIYUN_USERNAME" \
+            --password-stdin \
+            "$ALIYUN_REGISTRY"
+
+      - name: Validate images.txt
+        run: |
+          test -f images.txt || (echo "images.txt not found" && exit 1)
+          grep -v '^[[:space:]]*$' images.txt | grep -v '^#' > /tmp/images.txt
+          cat /tmp/images.txt
+
+      - name: Sync Multi-Arch Images
+        run: |
+          set -e
+
+          while read -r IMAGE; do
+            [ -z "$IMAGE" ] && continue
+
+            IMAGE_NAME_TAG="${IMAGE##*/}"
+            TARGET_IMAGE="$ALIYUN_REGISTRY/$ALIYUN_NAMESPACE/$IMAGE_NAME_TAG"
+
+            echo "======================================="
+            echo "SOURCE : $IMAGE"
+            echo "TARGET : $TARGET_IMAGE"
+            echo "======================================="
+
+            docker buildx imagetools create \
+              --tag "$TARGET_IMAGE" \
+              "$IMAGE"
+
+            echo "DONE: $TARGET_IMAGE"
+            echo
+
+          done < /tmp/images.txt
+
+      - name: Verify Result
+        run: |
+          while read -r IMAGE; do
+            [ -z "$IMAGE" ] && continue
+
+            IMAGE_NAME_TAG="${IMAGE##*/}"
+            TARGET_IMAGE="$ALIYUN_REGISTRY/$ALIYUN_NAMESPACE/$IMAGE_NAME_TAG"
+
+            echo "Inspect => $TARGET_IMAGE"
+            docker buildx imagetools inspect "$TARGET_IMAGE" || true
+            echo
+          done < /tmp/images.txt
+
+      - name: Job Finished
+        run: echo "All images synced successfully."
